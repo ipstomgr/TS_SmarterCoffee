@@ -1,0 +1,2 @@
+IPS-SmarterCoffe Module
+

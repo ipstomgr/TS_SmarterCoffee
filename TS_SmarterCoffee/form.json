@@ -1,0 +1,59 @@
+{
+	"elements":
+	[
+		{ "name": "CupsSoll",  "type": "Select", "caption": "Tassen Soll", 
+      "options": [
+                   { "label": "1 Stk.", "value": 1 },
+                   { "label": "2 Stk.", "value": 2 },
+                   { "label": "3 Stk.", "value": 3 },
+                   { "label": "4 Stk.", "value": 4 },
+                   { "label": "5 Stk.", "value": 5 },
+                   { "label": "6 Stk.", "value": 6 },
+                   { "label": "7 Stk.", "value": 7 },
+                   { "label": "8 Stk.", "value": 8 },
+                   { "label": "9 Stk.", "value": 9 },
+                   { "label": "10 Stk.", "value": 10 },
+                   { "label": "11 Stk.", "value": 11 },
+                   { "label": "12 Stk.", "value": 12 }
+                 ] 
+    },
+
+		{ "name": "Strength",  "type": "Select", "caption": "Stärke", 
+      "options": [
+                   { "label": "schwach", "value": 0 },
+                   { "label": "mittel",  "value": 1 },
+                   { "label": "stark",   "value": 2 }
+                 ] 
+    },
+
+		{ "name": "FilterBohnen",  "type": "Select", "caption": "Filter/Bohnen", 
+      "options": [
+                   { "label": "Filter", "value": 0 },
+                   { "label": "Bohnen",  "value": 1 }
+                 ] 
+    },
+
+		{ "name": "ZeitHeizplatte",  "type": "Select", "caption": "Zeit Heizplatte", 
+      "options": [
+                   { "label": "0 Min.", "value": 0 },
+                   { "label": "5 Min.", "value": 5 },
+                   { "label": "10 Min.", "value": 10 },
+                   { "label": "15 Min.", "value": 15 },
+                   { "label": "20 Min.", "value": 20 },
+                   { "label": "25 Min.", "value": 25 },
+                   { "label": "30 Min.", "value": 30 }
+                 ] 
+    },
+ 		{ "name": "ErkennungKanne",  "type": "Select", "caption": "Erkennung Kanne", 
+      "options": [
+                   { "label": "Ein", "value": 0 },
+                   { "label": "Aus",  "value": 1 }
+                 ] 
+    },
+
+	],
+	"actions":
+	[
+    { "type": "Button", "label": "Set Config", "onClick": "TScof_SetConfig($id, 1);" }
+  ]
+}
