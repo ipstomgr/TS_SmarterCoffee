@@ -54,6 +54,7 @@
 	],
 	"actions":
 	[
-    { "type": "Button", "label": "Set Config", "onClick": "TScof_SetConfig($id, 1);" }
+    	{ "type": "Button", "label": "Set Config", "onClick": "TScof_SetConfig($id, 1);" }
+	]
   ]
 }
