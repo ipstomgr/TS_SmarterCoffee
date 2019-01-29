@@ -1,5 +1,5 @@
 {
-	"id": "{b56c0a78-1acb-11e7-93ae-92361f002671}",
+	"id": "{C0068ED6-8E9F-4760-AF39-492E3838B4FB}",
 	"name": "TS_SmarterCoffee",
 	"type": 3,
 	"vendor": "",
@@ -7,5 +7,5 @@
 	"parentRequirements": ["{018EF6B5-AB94-40C6-AA53-46943E824ACF}", "{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}"],
 	"childRequirements": [],
 	"implemented": ["{018EF6B5-AB94-40C6-AA53-46943E824ACF}"],
-	"prefix": "TScof"
+	"prefix": "TSCOF"
 }
