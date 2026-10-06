@@ -1,10 +1,33 @@
 <?php
 
+declare(strict_types=1);
+
 require_once __DIR__ . '/../libs/helper.php';
 
 class TS_SmarterCoffee extends IPSModule
 {
     use VariablenHelper;
+
+    private const DATA_ID = '{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}';
+
+    // Antworten der Maschine (Byte 1 der Quittung 0x03)
+    private const MESSAGES = [
+        0   => 'Ok',
+        1   => 'brühen in Arbeit',
+        4   => 'gestoppt',
+        5   => 'keine Kanne',
+        6   => 'kein Wasser',
+        7   => 'wenig Wasser',
+        105 => 'fehlerhaftes Kommando',
+    ];
+    private const CARAFE_MESSAGES = [
+        0 => 'Kannenerkennung ein',
+        1 => 'Kannenerkennung aus',
+    ];
+    private const ONE_CUP_MESSAGES = [
+        0 => 'Ein-Tassen Mode aus',
+        1 => 'Ein-Tassen Mode ein',
+    ];
 
     public function Create()
     {
@@ -16,12 +39,6 @@ class TS_SmarterCoffee extends IPSModule
         $this->RegisterPropertyInteger('Strength', 2);
         $this->RegisterPropertyInteger('ZeitHeizplatte', 30);
         $this->RegisterPropertyInteger('ErkennungKanne', 0);  //0=ein, 1=aus
-    }
-
-    public function Destroy()
-    {
-        //Never delete this line!
-        parent::Destroy();
     }
 
     public function ApplyChanges()
@@ -58,130 +75,62 @@ class TS_SmarterCoffee extends IPSModule
         $this->EnableAction('FilterBohnen');
         $this->EnableAction('Heizplatte');
         $this->EnableAction('ZeitHeizplatte');
-		
     }
 
     public function ReceiveData($JSONString)
     {
         $data = json_decode($JSONString);
-        // Buffer decodieren und in eine Variable schreiben
-        $Buffer = utf8_decode($data->Buffer);
-//    $this->SendDebug('ReceiveData',$Buffer, 0);
-//    $this->SendDebug('Status Tassen',$this->parseStatus($Buffer)["cups"], 0);
-    $byte0 = ord(substr($Buffer, 0, 1)); // immer 0x32 - 50 Startbyte
-    if ($byte0 == 50) { //0x32
-        SetValue($this->GetIDForIdent('Status'), $this->parseStatus($Buffer)['status']);
-        SetValue($this->GetIDForIdent('Cups'), $this->parseStatus($Buffer)['cups']);
-        SetValue($this->GetIDForIdent('CupsSoll'), $this->parseStatus($Buffer)['cups_soll']);
-        SetValue($this->GetIDForIdent('Status'), $this->parseStatus($Buffer)['status']);
-        SetValue($this->GetIDForIdent('StatusHex'), $this->parseStatus($Buffer)['statushex']);
-        SetValue($this->GetIDForIdent('Strength'), $this->parseStatus($Buffer)['strength']);
-        SetValue($this->GetIDForIdent('WaterLevel'), $this->parseStatus($Buffer)['waterlevel']);
-        SetValue($this->GetIDForIdent('FilterBohnen'), $this->parseStatus($Buffer)['filter']);
-        SetValue($this->GetIDForIdent('genugWasser'), $this->parseStatus($Buffer)['genugwasser']);
-        SetValue($this->GetIDForIdent('Heizplatte'), $this->parseStatus($Buffer)['heizplatte']);
-        SetValue($this->GetIDForIdent('Kaffeefertig'), $this->parseStatus($Buffer)['fertig']);
-        SetValue($this->GetIDForIdent('KanneinMaschine'), $this->parseStatus($Buffer)['kanne']);
-        SetValue($this->GetIDForIdent('Boiler'), $this->parseStatus($Buffer)['boiler']);
-        SetValue($this->GetIDForIdent('Working'), $this->parseStatus($Buffer)['working']);
-        SetValue($this->GetIDForIdent('Mahlwerk'), $this->parseStatus($Buffer)['grinder']);
-    }
+        // Der Buffer kommt UTF-8-kodiert an und wird wieder in Rohbytes gewandelt
+        $buffer = mb_convert_encoding((string) ($data->Buffer ?? ''), 'ISO-8859-1', 'UTF-8');
+        $this->SendDebug('Receive', $buffer, 1);
 
-        if ($byte0 == 3) {  //0x32
-            $byte1 = ord(substr($Buffer, 1, 1));
-            switch ($byte1) {
-            case 0:
-                $meldung = 'Ok';
-                break;
-            case 1:
-                $meldung = 'brühen in Arbeit';
-                break;
-            case 4:
-                $meldung = 'gestoppt';
-                break;
-            case 5:
-                $meldung = 'keine Kanne';
-                break;
-            case 6:
-                $meldung = 'kein Wasser';
-                break;
-            case 7:
-                $meldung = 'wenig Wasser';
-                break;
-            case 105:
-                $meldung = 'fehlerhaftes Kommando';
-                break;
-
-            default:
-                $meldung = 'unbekannt';
-        }
-            setValue($this->GetIDForIdent('Meldung'), $meldung);
+        if ($buffer === '') {
+            return;
         }
 
-        if ($byte0 == 77) { //0x4d
-            $byte1 = ord(substr($Buffer, 1, 1));
-            switch ($byte1) {
-            case 0:
-                $meldung = 'Kannenerkennung ein';
+        switch (ord($buffer[0])) {
+            case 0x32: // Statusmeldung
+                $this->HandleStatus($buffer);
                 break;
-            case 1:
-                $meldung = 'Kannenerkennung aus';
+            case 0x03: // Quittung eines Kommandos
+                $this->HandleMessage('Meldung', $buffer, self::MESSAGES);
                 break;
-            default:
-                $meldung = 'unbekannt';
-        }
-
-            setValue($this->GetIDForIdent('Meldung2'), $meldung);
-        }
-
-        if ($byte0 == 80) {//0x4d
-            $byte1 = ord(substr($Buffer, 1, 1));
-            switch ($byte1) {
-            case 0:
-                $meldung = 'Ein-Tassen Mode aus';
+            case 0x4D: // Kannenerkennung
+                $this->HandleMessage('Meldung2', $buffer, self::CARAFE_MESSAGES);
                 break;
-            case 1:
-                $meldung = 'Ein-Tassen Mode ein';
+            case 0x50: // Ein-Tassen-Modus
+                $this->HandleMessage('Meldung2', $buffer, self::ONE_CUP_MESSAGES);
                 break;
-            default:
-                $meldung = 'unbekannt';
-        }
-            setValue($this->GetIDForIdent('Meldung2'), $meldung);
         }
     }
 
-    public function parseStatus($data)
+    public function parseStatus(string $data)
     {
-//    $byte0      = ord(substr($data,0,1));// immer 0x32 - 50 Startbyte
-    $result['status'] = ord(substr($data, 1, 1)); //(carafe << 0) + (grind << 1) + (ready << 2) + (grinder << 3) + (heater << 4) + (hotplate << 6) + (working << 5) + (timer << 7))
-    $result['statushex'] = dechex(ord(substr($data, 1, 1))); //(carafe << 0) + (grind << 1) + (ready << 2) + (grinder << 3) + (heater << 4) + (hotplate << 6) + (working << 5) + (timer << 7))
+        if (strlen($data) < 6) {
+            return [];
+        }
 
-    $result['waterlevel'] = ord(substr($data, 2, 1));
-//    $byte3      = ord(substr($data,3,1));// immer 0x00 - 0
-        $result['strength'] = ord(substr($data, 4, 1));
-        $result['cups'] = dechex(ord(substr($data, 5, 1))); // passt hier nicht,44 wird angezeigt bei 2C ist es aber 12 Tassen....
-        // 1te Stelle die Anzahl die gekocht werden, 2te Stelle Sollwert
-        //	  $byte6      = ord(substr($data,6,1));// immer 0x7E - 126 Endbyte
+        $status = ord($data[1]);
+        $water = ord($data[2]);
+        $cups = ord($data[5]); // oberes Nibble: Tassen, unteres Nibble: Sollwert
+        $result = [];
 
-        $cups = str_pad($result['cups'], 2, '0', STR_PAD_LEFT);
-        $arr = str_split($cups, 1);
-        $result['cups'] = hexdec($arr[0]);
-        $result['cups_soll'] = hexdec($arr[1]);
+        $result['status'] = $status;
+        $result['statushex'] = dechex($status);
+        $result['strength'] = ord($data[4]);
+        $result['cups'] = $cups >> 4;
+        $result['cups_soll'] = $cups & 0x0F;
+        $result['genugwasser'] = ($water >> 4) > 0;
+        $result['waterlevel'] = $water & 0x0F;
 
-        $waterlevel = dechex($result['waterlevel']);
-        $waterlevel = (str_pad($waterlevel, 2, '0', STR_PAD_LEFT));
-        $arr = str_split($waterlevel, 1);
-        $result['genugwasser'] = hexdec($arr[0]);
-        $result['waterlevel'] = (hexdec($arr[1]));
-
-        $stat = (str_pad(decbin($result['status']), 8, '0', STR_PAD_LEFT));
-        $result['filter'] = substr($stat, 6, 1);
-        $result['kanne'] = substr($stat, 7, 1);
-        $result['heizplatte'] = substr($stat, 1, 1);
-        $result['fertig'] = substr($stat, 5, 1);
-        $result['boiler'] = substr($stat, 3, 1);
-        $result['working'] = substr($stat, 2, 1);
-        $result['grinder'] = substr($stat, 4, 1);
+        // Statusbits: carafe=0, filter=1, ready=2, grinder=3, heater=4, working=5, hotplate=6, timer=7
+        $result['kanne'] = (bool) ($status & 0x01);
+        $result['filter'] = (bool) ($status & 0x02);
+        $result['fertig'] = (bool) ($status & 0x04);
+        $result['grinder'] = (bool) ($status & 0x08);
+        $result['boiler'] = (bool) ($status & 0x10);
+        $result['working'] = (bool) ($status & 0x20);
+        $result['heizplatte'] = (bool) ($status & 0x40);
 
         return $result;
     }
@@ -190,189 +139,151 @@ class TS_SmarterCoffee extends IPSModule
     {
         switch ($ident) {
             case 'CupsSoll':
-                $this->SetCups($value);
-            break;
+                $this->SetCups((int) $value);
+                break;
             case 'Strength':
-                $this->SetStrength($value);
-            break;
+                $this->SetStrength((int) $value);
+                break;
             case 'Start':
-                $this->SetStart($value);
-            break;
+                $this->SetStart((bool) $value);
+                break;
             case 'Stop':
-                $this->SetStop($value);
-            break;
+                $this->SetStop((bool) $value);
+                break;
             case 'FilterBohnen':
-                $this->SetFilterBohnen($value);
-            break;
+                $this->SetFilterBohnen((bool) $value);
+                break;
             case 'Heizplatte':
-                $this->SetHeizplatte($value);
-            break;
+                $this->SetHeizplatte((bool) $value);
+                break;
             case 'ZeitHeizplatte':
-                $this->SetZeitHeizplatte($value);
-            break;
-
+                $this->SetZeitHeizplatte((int) $value);
+                break;
             default:
-                throw new Exception('Invalid Ident');
+                throw new Exception('Invalid Ident: ' . $ident);
         }
     }
+
     public function SetZeitHeizplatte(int $value)
     {
-        SetValue($this->GetIDForIdent('ZeitHeizplatte'), $value);
+        $this->SetValue('ZeitHeizplatte', $value);
     }
 
     public function SetConfig()
     {
-        $cups = $this->ReadPropertyInteger('CupsSoll');
-        $cups = dechex($cups); //hex2bin("08");
-        $cups = hex2bin(str_pad($cups, 2, '0', STR_PAD_LEFT));
-
-        $strength = $this->ReadPropertyInteger('Strength');
-        $strength = dechex($strength); //hex2bin("02");
-        $strength = hex2bin(str_pad($strength, 2, '0', STR_PAD_LEFT));
-
-        $grind = $this->ReadPropertyInteger('FilterBohnen');
-        $grind = intval($grind);
-        $grind = dechex($grind);
-        $grind = hex2bin(str_pad($grind, 2, '0', STR_PAD_LEFT));
-
-        $minutes = $this->ReadPropertyInteger('ZeitHeizplatte');
-        $minutes = dechex($minutes);
-        $minutes = hex2bin(str_pad($minutes, 2, '0', STR_PAD_LEFT));
-
-        $packet = CMD_SET_CONFIG;
-        $packet .= $strength;
-        $packet .= $cups;
-        $packet .= $grind;
-        $packet .= $minutes;
-        $packet .= CMD_END;
-
+        $packet = CMD_SET_CONFIG
+            . $this->toByte($this->ReadPropertyInteger('Strength'))
+            . $this->toByte($this->ReadPropertyInteger('CupsSoll'))
+            . $this->toByte($this->ReadPropertyInteger('FilterBohnen'))
+            . $this->toByte($this->ReadPropertyInteger('ZeitHeizplatte'))
+            . CMD_END;
         $this->SendPacket($packet);
 
-        //$packet = CMD_SET_CONFIG.$stärke.$tassen.$grind.$minuten.CMD_END;
+        // Die Maschine braucht zwischen den Kommandos etwas Zeit
+        sleep(1);
+        $this->SendPacket(CMD_SET_CARAFE . $this->toByte($this->ReadPropertyInteger('ErkennungKanne')) . CMD_END);
 
         sleep(1);
-        $carafe = $this->ReadPropertyInteger('ErkennungKanne');
-        $carafe = dechex($carafe);
-        $carafe = hex2bin(str_pad($carafe, 2, '0', STR_PAD_LEFT));
-
-        $packet = CMD_SET_CARAFE;
-        $packet .= $carafe;
-        $packet .= CMD_END;
-        $this->SendPacket($packet);
-
-        sleep(1);
-
-        // 4D 00 7E = Kanne erkennung ein oder 4D 01 7E Kanne erkennung aus
-        $packet = CMD_GET_CARAFE;
-        $packet .= CMD_END;
-
-        $this->SendPacket($packet);
+        // 4D 00 7E = Kannenerkennung ein, 4D 01 7E = Kannenerkennung aus
+        $this->SendPacket(CMD_GET_CARAFE . CMD_END);
     }
 
     public function SetStop(bool $value)
     {
-        SetValue($this->GetIDForIdent('Stop'), $value);
-        switch ($value) {
-        case true:
-          $packet = CMD_STOP_BREWING;
-          $packet .= CMD_END;
-
-          $this->SendPacket($packet);
-
-          sleep(1);
-          SetValue($this->GetIDForIdent('Stop'), false);
-        break;
-    }
+        $this->SetValue('Stop', $value);
+        if ($value) {
+            $this->SendPacket(CMD_STOP_BREWING . CMD_END);
+            sleep(1);
+            $this->SetValue('Stop', false);
+        }
     }
 
     public function SetStart(bool $value)
     {
-        SetValue($this->GetIDForIdent('Start'), $value);
-        if ($value == true) {
-            $cups = GetValue($this->GetIDForIdent('CupsSoll'));
-            $cups = dechex($cups); //hex2bin("08");
-            $cups = hex2bin(str_pad($cups, 2, '0', STR_PAD_LEFT));
-
-            $strength = GetValue($this->GetIDForIdent('Strength'));
-            $strength = dechex($strength); //hex2bin("02");
-            $strength = hex2bin(str_pad($strength, 2, '0', STR_PAD_LEFT));
-
-            $grind = GetValue($this->GetIDForIdent('FilterBohnen'));
-            $grind = intval($grind);
-            $grind = dechex($grind);
-            $grind = hex2bin(str_pad($grind, 2, '0', STR_PAD_LEFT));
-
-            $minutes = GetValue($this->GetIDForIdent('ZeitHeizplatte'));
-            $minutes = dechex($minutes);
-            $minutes = hex2bin(str_pad($minutes, 2, '0', STR_PAD_LEFT));
-
-            $packet = CMD_START_BREWING;
-            $packet .= $cups;
-            $packet .= $strength;
-            $packet .= $minutes;
-            $packet .= $grind;
-            $packet .= CMD_END;
-
+        $this->SetValue('Start', $value);
+        if ($value) {
+            $packet = CMD_START_BREWING
+                . $this->toByte($this->GetValue('CupsSoll'))
+                . $this->toByte($this->GetValue('Strength'))
+                . $this->toByte($this->GetValue('ZeitHeizplatte'))
+                . $this->toByte((int) $this->GetValue('FilterBohnen'))
+                . CMD_END;
             $this->SendPacket($packet);
 
             sleep(1);
-            SetValue($this->GetIDForIdent('Start'), false);
+            $this->SetValue('Start', false);
         }
     }
 
     public function SetFilterBohnen(bool $value)
     {
-        $packet = CMD_SET_GRINDER;
-        $packet .= CMD_END;
-
-        $this->SendPacket($packet);
+        // Das Kommando schaltet in der Maschine zwischen Filter und Bohnen um
+        $this->SendPacket(CMD_SET_GRINDER . CMD_END);
     }
 
     public function SetHeizplatte(bool $value)
     {
-        $minutes = GetValue($this->GetIDForIdent('ZeitHeizplatte'));
-        $minutes = hex2bin(str_pad(dechex($minutes), 2, '0', STR_PAD_LEFT));
-
-        if ($value === true) {
-            $packet = CMD_ENABLE_WARMING;
-            $packet .= $minutes;
-            $packet .= CMD_END;
+        if ($value) {
+            $packet = CMD_ENABLE_WARMING . $this->toByte($this->GetValue('ZeitHeizplatte')) . CMD_END;
         } else {
-            $packet = CMD_DISABLE_WARMING;
-            $packet .= CMD_END;
+            $packet = CMD_DISABLE_WARMING . CMD_END;
         }
-
         $this->SendPacket($packet);
     }
 
     public function SetCups(int $value)
     {
-        $cups = hex2bin(str_pad(dechex($value), 2, '0', STR_PAD_LEFT));
-
-        $packet = CMD_SET_CUPS;
-        $packet .= $cups;
-        $packet .= CMD_END;
-
-        $this->SendPacket($packet);
+        $this->SendPacket(CMD_SET_CUPS . $this->toByte($value) . CMD_END);
     }
 
     public function SetStrength(int $value)
     {
-        $strength = hex2bin(str_pad(dechex($value), 2, '0', STR_PAD_LEFT));
-
-        $packet = CMD_SET_STRENGTH;
-        $packet .= $strength;
-        $packet .= CMD_END;
-
-        $this->SendPacket($packet);
+        $this->SendPacket(CMD_SET_STRENGTH . $this->toByte($value) . CMD_END);
     }
 
-    private function SendPacket($packet)
+    private function HandleStatus(string $buffer): void
     {
-        $JSON['DataID'] = '{79827379-F36E-4ADA-8A95-5F8D1DC92FA9}';
-        $JSON['Buffer'] = utf8_encode($packet);
-        $SendData = json_encode($JSON);
-        $this->SendDataToParent($SendData);
+        $s = $this->parseStatus($buffer);
+        if ($s === []) {
+            $this->SendDebug('Status', 'Paket zu kurz: ' . strlen($buffer) . ' Bytes', 0);
+            return;
+        }
+
+        $this->SetValue('Status', $s['status']);
+        $this->SetValue('StatusHex', $s['statushex']);
+        $this->SetValue('Cups', $s['cups']);
+        $this->SetValue('CupsSoll', $s['cups_soll']);
+        $this->SetValue('Strength', $s['strength']);
+        $this->SetValue('WaterLevel', $s['waterlevel']);
+        $this->SetValue('FilterBohnen', $s['filter']);
+        $this->SetValue('genugWasser', $s['genugwasser']);
+        $this->SetValue('Heizplatte', $s['heizplatte']);
+        $this->SetValue('Kaffeefertig', $s['fertig']);
+        $this->SetValue('KanneinMaschine', $s['kanne']);
+        $this->SetValue('Boiler', $s['boiler']);
+        $this->SetValue('Working', $s['working']);
+        $this->SetValue('Mahlwerk', $s['grinder']);
+    }
+
+    private function HandleMessage(string $ident, string $buffer, array $messages): void
+    {
+        $code = strlen($buffer) > 1 ? ord($buffer[1]) : -1;
+        $this->SetValue($ident, $messages[$code] ?? 'unbekannt');
+    }
+
+    private function toByte($value): string
+    {
+        return pack('C', max(0, min(255, (int) $value)));
+    }
+
+    private function SendPacket(string $packet): void
+    {
+        $this->SendDebug('Send', $packet, 1);
+        $json = json_encode([
+            'DataID' => self::DATA_ID,
+            'Buffer' => mb_convert_encoding($packet, 'UTF-8', 'ISO-8859-1'),
+        ]);
+        $this->SendDataToParent($json);
     }
 
     private function createVariablenProfiles()
